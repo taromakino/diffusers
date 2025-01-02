@@ -4,8 +4,11 @@ import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
-from pathlib import Path
 from typing import List
+
+
+def get_prompt(meaning):
+    return f"a kanji character meaning {meaning}, with black strokes on a white background"
 
 
 def get_paths_from_kanji(
@@ -76,8 +79,8 @@ def main(args):
                 shutil.copy(from_path, to_path)
                 list_of_dicts.append(
                     {
-                        "file_name": to_path,
-                        "text": meaning.text,
+                        "file_name": os.path.basename(to_path),
+                        "text": get_prompt(meaning.text),
                     }
                 )
 
