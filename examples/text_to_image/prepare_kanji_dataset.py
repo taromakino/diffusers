@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
@@ -28,15 +29,19 @@ def get_svg(paths: List[str]) -> str:
     return svg
 
 
-def save_images(
-        data_dir: Path
-) -> None:
-    kanjivg_path = os.path.join(data_dir, "kanjivg-20220427.xml")
+def main(args):
+    kanjivg_path = os.path.join(args.data_dir, "kanjivg-20220427.xml")
     tree = ET.parse(kanjivg_path)
     root = tree.getroot()
 
-    images_dir = os.path.join(data_dir, "train")
-    os.makedirs(images_dir)
+    all_images_dir = os.path.join(args.data_dir, "all_images")
+    train_dir = os.path.join(args.data_dir, "train")
+
+    shutil.rmtree(all_images_dir, ignore_errors=True)
+    shutil.rmtree(train_dir, ignore_errors=True)
+
+    os.makedirs(all_images_dir)
+    os.makedirs(train_dir)
 
     for kanji in root.findall(".//kanji"):
         kanji_id = kanji.get("id", "").replace("kvg:kanji_", "")
@@ -48,19 +53,15 @@ def save_images(
             continue
 
         svg = get_svg(paths)
-        temp_svg_path = os.path.join(images_dir, "temp.svg")
+        temp_svg_path = os.path.join(all_images_dir, "temp.svg")
         with open(temp_svg_path, "w", encoding="utf-8") as f:
             f.write(svg)
 
-        image_path = os.path.join(images_dir, f"{kanji_id}.png")
+        image_path = os.path.join(all_images_dir, f"{kanji_id}.png")
         subprocess.run(['rsvg-convert', '-o', image_path, temp_svg_path], check=True)
         os.remove(temp_svg_path)
 
-
-def save_metadata(
-        data_dir: Path,
-):
-    kanjidic_path = os.path.join(data_dir, "kanjidic2.xml")
+    kanjidic_path = os.path.join(args.data_dir, "kanjidic2.xml")
     tree = ET.parse(kanjidic_path)
     root = tree.getroot()
 
@@ -69,25 +70,24 @@ def save_metadata(
         kanji_id = character.find('.//cp_value[@cp_type="ucs"]')
         meaning = character.find(".//meaning")
         if kanji_id is not None and meaning is not None:
-            image_path = os.path.join(data_dir, "train", f"{kanji_id.text.zfill(5)}.png")
-            if os.path.exists(image_path):
+            from_path = os.path.join(args.data_dir, "all_images", f"{kanji_id.text.zfill(5)}.png")
+            if os.path.exists(from_path):
+                to_path = os.path.join(args.data_dir, "train", f"{kanji_id.text.zfill(5)}.png")
+                shutil.copy(from_path, to_path)
                 list_of_dicts.append(
                     {
-                        "file_name": image_path,
+                        "file_name": to_path,
                         "text": meaning.text,
                     }
                 )
 
-    metadata_path = os.path.join(data_dir, "train", "metadata.jsonl")
+    metadata_path = os.path.join(args.data_dir, "train", "metadata.jsonl")
     with open(metadata_path, "w") as f:
         for item in list_of_dicts:
             json_line = json.dumps(item)
             f.write(json_line + "\n")
 
-
-def main(args):
-    save_images(args.data_dir)
-    save_metadata(args.data_dir)
+    shutil.rmtree(all_images_dir)
 
 
 if __name__ == "__main__":
