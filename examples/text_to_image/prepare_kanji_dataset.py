@@ -4,93 +4,106 @@ import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
-from typing import List
+from PIL import Image
+from typing import Dict
 
 
-def get_prompt(meaning):
-    return f"a kanji character meaning {meaning}, with black strokes on a white background"
+def get_prompt(
+        meanings: str,
+) -> str:
+    return f"a kanji character with black strokes on a white background, with the following meaninigs: {meanings}"
 
 
-def get_paths_from_kanji(
-        kanji: ET.Element
-) -> List[str]:
-    paths = []
-    for path in kanji.findall(".//path"):
-        d = path.get("d")
-        if d:
-            paths.append(d)
-    return paths
+def save_jpeg(
+        jpeg_dir: str,
+        kanji_char: str,
+        svg: str,
+):
+    temp_svg_path = os.path.join(jpeg_dir, "temp.svg")
+    with open(temp_svg_path, "w", encoding="utf-8") as f:
+        f.write(svg)
+
+    temp_png_path = os.path.join(jpeg_dir, f"{kanji_char}.png")
+    subprocess.run(["rsvg-convert", "-o", temp_png_path, temp_svg_path], check=True)
+
+    jpeg_path = temp_png_path.replace(".png", ".jpeg")
+    with Image.open(temp_png_path) as img:
+        with Image.new("RGB", img.size, "WHITE") as background:
+            background.paste(img, (0, 0), img)
+            background.save(jpeg_path, "JPEG")
+
+    os.remove(temp_svg_path)
+    os.remove(temp_png_path)
 
 
-def get_svg(paths: List[str]) -> str:
-    svg = f'''<?xml version="1.0" encoding="UTF-8"?>
-<svg width="128" height="128" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <g stroke="black" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        {chr(10).join(f'        <path d="{path}"/>' for path in paths)}
-    </g>
-</svg>'''
-    return svg
+def get_kanji_char_to_svg(
+        data_dir: str,
+) -> Dict[str, str]:
+    kanji_char_to_svg = {}
 
-
-def main(args):
-    kanjivg_path = os.path.join(args.data_dir, "kanjivg-20220427.xml")
+    ET.register_namespace("kvg", "http://kanjivg.tagaini.net")
+    kanjivg_path = os.path.join(data_dir, "kanjivg-20220427.xml")
     tree = ET.parse(kanjivg_path)
     root = tree.getroot()
 
-    all_images_dir = os.path.join(args.data_dir, "all_images")
-    train_dir = os.path.join(args.data_dir, "train")
-
-    shutil.rmtree(all_images_dir, ignore_errors=True)
-    shutil.rmtree(train_dir, ignore_errors=True)
-
-    os.makedirs(all_images_dir)
-    os.makedirs(train_dir)
-
     for kanji in root.findall(".//kanji"):
-        kanji_id = kanji.get("id", "").replace("kvg:kanji_", "")
-        if not kanji_id:
+        top_group = kanji.find("./g")
+        kanji_char = top_group.get("{http://kanjivg.tagaini.net}element")
+        if kanji_char is None:
             continue
 
-        paths = get_paths_from_kanji(kanji)
-        if not paths:
-            continue
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">\n'
+            '  <g style="fill:none;stroke:#000000">\n'
+        )
+        svg += ET.tostring(top_group, encoding="unicode")
+        svg += "  </g>\n</svg>"
 
-        svg = get_svg(paths)
-        temp_svg_path = os.path.join(all_images_dir, "temp.svg")
-        with open(temp_svg_path, "w", encoding="utf-8") as f:
-            f.write(svg)
+        kanji_char_to_svg[kanji_char] = svg
+    return kanji_char_to_svg
 
-        image_path = os.path.join(all_images_dir, f"{kanji_id}.png")
-        subprocess.run(['rsvg-convert', '-o', image_path, temp_svg_path], check=True)
-        os.remove(temp_svg_path)
+
+def main(args):
+    jpeg_dir = os.path.join(args.data_dir, "train")
+    shutil.rmtree(jpeg_dir, ignore_errors=True)
+    os.makedirs(jpeg_dir)
+
+    kanji_char_to_svg = get_kanji_char_to_svg(args.data_dir)
 
     kanjidic_path = os.path.join(args.data_dir, "kanjidic2.xml")
     tree = ET.parse(kanjidic_path)
     root = tree.getroot()
 
-    list_of_dicts = []
+    list_of_filename_to_text = []
     for character in root.findall("character"):
-        kanji_id = character.find('.//cp_value[@cp_type="ucs"]')
-        meaning = character.find(".//meaning")
-        if kanji_id is not None and meaning is not None:
-            from_path = os.path.join(args.data_dir, "all_images", f"{kanji_id.text.zfill(5)}.png")
-            if os.path.exists(from_path):
-                to_path = os.path.join(args.data_dir, "train", f"{kanji_id.text.zfill(5)}.png")
-                shutil.copy(from_path, to_path)
-                list_of_dicts.append(
-                    {
-                        "file_name": os.path.basename(to_path),
-                        "text": get_prompt(meaning.text),
-                    }
-                )
+        kanji_char = character.find("literal")
+        if kanji_char is None:
+            continue
+
+        kanji_char = kanji_char.text
+        if kanji_char not in kanji_char_to_svg:
+            continue
+
+        meanings = [m for m in character.findall(".//meaning") if "m_lang" not in m.attrib]
+        if len(meanings) == 0:
+            continue
+
+        meanings = [meaning.text for meaning in meanings]
+        meanings = ", ".join(meanings)
+
+        save_jpeg(jpeg_dir, kanji_char, kanji_char_to_svg[kanji_char])
+        list_of_filename_to_text.append(
+            {
+                "file_name": f"{kanji_char}.jpeg",
+                "text": get_prompt(meanings),
+            }
+        )
 
     metadata_path = os.path.join(args.data_dir, "train", "metadata.jsonl")
     with open(metadata_path, "w") as f:
-        for item in list_of_dicts:
+        for item in list_of_filename_to_text:
             json_line = json.dumps(item)
             f.write(json_line + "\n")
-
-    shutil.rmtree(all_images_dir)
 
 
 if __name__ == "__main__":
