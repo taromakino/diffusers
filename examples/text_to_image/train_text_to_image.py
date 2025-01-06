@@ -138,7 +138,7 @@ More information on all the CLI arguments and the environment are available on y
     model_card.save(os.path.join(repo_folder, "README.md"))
 
 
-def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, epoch):
+def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, global_step):
     logger.info("Running validation... ")
 
     pipeline = StableDiffusionPipeline.from_pretrained(
@@ -179,15 +179,16 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
                 width=args.resolution,
             ).images[0]
 
-        image_path = os.path.join(args.output_dir, "images", f"epoch={epoch}", f"{args.validation_prompts[i]}.png")
-        image.save(image_path)
+        image_dir = os.path.join(args.output_dir, "images", f"epoch={global_step}")
+        os.makedirs(image_dir, exist_ok=True)
+        image.save(os.path.join(image_dir, f"{args.validation_prompts[i]}.png"))
 
         images.append(image)
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+            tracker.writer.add_images("validation", np_images, global_step, dataformats="NHWC")
         elif tracker.name == "wandb":
             tracker.log(
                 {
