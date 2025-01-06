@@ -5,25 +5,28 @@ import subprocess
 import xml.etree.ElementTree as ET
 from argparse import ArgumentParser
 from PIL import Image
-from typing import Dict
+from typing import Dict, Tuple
+
+
+KANJI_ID_LEN = 5
 
 
 def get_prompt(
         meanings: str,
 ) -> str:
-    return f"a kanji meaning {meanings}"
+    return f"a kanji character with black strokes on a white background, with the following meanings: {meanings}"
 
 
 def save_jpeg(
         jpeg_dir: str,
-        kanji_char: str,
+        kanji_id: str,
         svg: str,
 ):
     temp_svg_path = os.path.join(jpeg_dir, "temp.svg")
     with open(temp_svg_path, "w", encoding="utf-8") as f:
         f.write(svg)
 
-    temp_png_path = os.path.join(jpeg_dir, f"{kanji_char}.png")
+    temp_png_path = os.path.join(jpeg_dir, f"{kanji_id}.png")
     subprocess.run(["rsvg-convert", "-o", temp_png_path, temp_svg_path], check=True)
 
     jpeg_path = temp_png_path.replace(".png", ".jpeg")
@@ -36,9 +39,10 @@ def save_jpeg(
     os.remove(temp_png_path)
 
 
-def get_kanji_char_to_svg(
+def get_kanji_dicts(
         data_dir: str,
-) -> Dict[str, str]:
+) -> Tuple[Dict[str, str], Dict[str, str]]:
+    kanji_char_to_id = {}
     kanji_char_to_svg = {}
 
     ET.register_namespace("kvg", "http://kanjivg.tagaini.net")
@@ -52,6 +56,10 @@ def get_kanji_char_to_svg(
         if kanji_char is None:
             continue
 
+        kanji_id = kanji.get("id").replace("kvg:kanji_", "")
+        assert len(kanji_id) == KANJI_ID_LEN
+        kanji_char_to_id[kanji_char] = kanji_id
+
         svg = (
             '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">\n'
             '  <g style="fill:none;stroke:#000000">\n'
@@ -60,7 +68,8 @@ def get_kanji_char_to_svg(
         svg += "  </g>\n</svg>"
 
         kanji_char_to_svg[kanji_char] = svg
-    return kanji_char_to_svg
+
+    return kanji_char_to_id, kanji_char_to_svg
 
 
 def main(args):
@@ -68,7 +77,7 @@ def main(args):
     shutil.rmtree(jpeg_dir, ignore_errors=True)
     os.makedirs(jpeg_dir)
 
-    kanji_char_to_svg = get_kanji_char_to_svg(args.data_dir)
+    kanji_char_to_id, kanji_char_to_svg = get_kanji_dicts(args.data_dir)
 
     kanjidic_path = os.path.join(args.data_dir, "kanjidic2.xml")
     tree = ET.parse(kanjidic_path)
@@ -91,10 +100,12 @@ def main(args):
         meanings = [meaning.text for meaning in meanings]
         meanings = ", ".join(meanings)
 
-        save_jpeg(jpeg_dir, kanji_char, kanji_char_to_svg[kanji_char])
+        kanji_id = kanji_char_to_id[kanji_char]
+
+        save_jpeg(jpeg_dir, kanji_id, kanji_char_to_svg[kanji_char])
         list_of_filename_to_text.append(
             {
-                "file_name": f"{kanji_char}.jpeg",
+                "file_name": f"{kanji_id}.jpeg",
                 "text": get_prompt(meanings),
             }
         )
