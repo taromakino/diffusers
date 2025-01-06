@@ -497,7 +497,7 @@ def parse_args():
     parser.add_argument(
         "--validation_epochs",
         type=int,
-        default=5,
+        default=1,
         help="Run validation every X epochs.",
     )
     parser.add_argument(

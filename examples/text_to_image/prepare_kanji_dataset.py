@@ -61,9 +61,10 @@ def get_kanji_dicts(
         kanji_char_to_id[kanji_char] = kanji_id
 
         svg = (
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">\n'
-            '  <g style="fill:none;stroke:#000000">\n'
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 109 109">\n'
+            '  <g transform="translate(2,2)" style="fill:none;stroke:#000000;stroke-width:3;stroke-linecap:round;stroke-linejoin:round">\n'
         )
+
         svg += ET.tostring(top_group, encoding="unicode")
         svg += "  </g>\n</svg>"
 
