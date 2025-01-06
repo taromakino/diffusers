@@ -171,7 +171,13 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
             autocast_ctx = torch.autocast(accelerator.device.type)
 
         with autocast_ctx:
-            image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+            image = pipeline(
+                args.validation_prompts[i],
+                num_inference_steps=20,
+                generator=generator,
+                height=args.resolution,
+                width=args.resolution,
+            ).images[0]
 
         image_path = os.path.join(args.output_dir, "images", f"epoch={epoch}", f"{args.validation_prompts[i]}.png")
         image.save(image_path)
@@ -794,8 +800,8 @@ def main():
     train_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
-            transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
+            # transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+            # transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ]
