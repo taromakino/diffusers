@@ -11,7 +11,7 @@ from typing import Dict
 def get_prompt(
         meanings: str,
 ) -> str:
-    return f"a kanji character with black strokes on a white background, with the following meanings: {meanings}"
+    return f"a kanji meaning {meanings}"
 
 
 def save_jpeg(

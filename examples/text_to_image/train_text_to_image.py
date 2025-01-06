@@ -173,6 +173,9 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
         with autocast_ctx:
             image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
 
+        image_path = os.path.join(args.output_dir, "images", f"epoch={epoch}", f"{args.validation_prompts[i]}.png")
+        image.save(image_path)
+
         images.append(image)
 
     for tracker in accelerator.trackers:
