@@ -526,8 +526,17 @@ def parse_args():
     return args
 
 
+def write(path, text):
+    with open(path, "a+") as f:
+        f.write(text + "\n")
+
+
 def main():
     args = parse_args()
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    train_loss_path = os.path.join(args.output_dir, "train_loss.csv")
+    write(train_loss_path, "epoch,train_loss")
 
     if args.report_to == "wandb" and args.hub_token is not None:
         raise ValueError(
@@ -956,6 +965,7 @@ def main():
 
     for epoch in range(first_epoch, args.num_train_epochs):
         train_loss = 0.0
+        epoch_losses = []
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # Convert images to latent space
@@ -1032,6 +1042,8 @@ def main():
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
 
+                epoch_losses.append(loss.item())
+
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
@@ -1088,6 +1100,8 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
+
+        write(train_loss_path, f"{epoch},{np.mean(epoch_losses)}")
 
         if accelerator.is_main_process:
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
